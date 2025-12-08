@@ -1,1 +1,6 @@
-
+x = input()
+f = open('entrada.txt','r')
+cadena = f.read()
+f.close()
+f = open('salida.txt','w')
+f.write(x+'|'+cadena)
