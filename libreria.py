@@ -477,7 +477,7 @@ def construir_resultado(contexto):
         args_str = ", ".join(repr(a) for a in argumentos)
 
         html = (
-            "<b>Evaluación de función</b><br>"
+            "<b>EVALUACION DE LA FUNCIÓN</b><br>"
             f"<b>Argumentos usados:</b> <pre>{args_str}</pre>"
             "<table style='width:100%; border-collapse:collapse; margin-top:0.5em;'>"
             "<tr>"
@@ -501,8 +501,8 @@ def construir_resultado(contexto):
         html = (
             "<table style='width:100%; border-collapse:collapse;'>"
             "<tr>"
-            "  <th style='width:50%; text-align:left;'><b>RESULTADO ALUMNO</b></th>"
-            "  <th style='width:50%; text-align:left;'><b>RESULTADO CORRECTO</b></th>"
+            "  <th style='width:50%; text-align:left;'><b>PROGRAMA ALUMNO</b></th>"
+            "  <th style='width:50%; text-align:left;'><b>PROGRAMA CORRECTO</b></th>"
             "</tr>"
             "<tr>"
             "  <td style='vertical-align:top; border-right:1px solid #ccc;'>"
