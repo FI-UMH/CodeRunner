@@ -99,49 +99,55 @@ def comprobar_restricciones(contexto, codigo_alumno):
 
     Si no hay infracciones:
       - contexto["bloquear_ejecucion"] = False
-      - guarda el código en contexto["codigo_alumno"] (por si luego lo necesitas)
+      - guarda el código en contexto["codigo_alumno"]
     """
     contexto = dict(contexto)
 
     restricciones = contexto.get("restricciones", {}) or {}
     violaciones = []
 
-    # Helper para buscar palabra completa con regex
-    def contiene_palabra(palabra):
-        patron = r"\\b" + re.escape(palabra) + r"\\b"
-        return re.search(patron, codigo_alumno) is not None
+    # Opcional: eliminar comentarios de una línea para no bloquear por cosas en comentarios
+    lineas_sin_coment = []
+    for line in codigo_alumno.splitlines():
+        # Quita lo que haya tras '#'
+        if "#" in line:
+            line = line.split("#", 1)[0]
+        lineas_sin_coment.append(line)
+    codigo_limpio = "\n".join(lineas_sin_coment)
 
-    # --- ejemplos de restricciones ---
+    # Función helper: búsqueda directa de la palabra
+    def contiene(palabra: str) -> bool:
+        return palabra in codigo_limpio
+
+    # --- restricciones básicas ---
     if restricciones.get("prohibir_import"):
-        if contiene_palabra("import"):
+        if contiene("import "):  # import con espacio
             violaciones.append("Uso de 'import' no permitido.")
 
     if restricciones.get("prohibir_while"):
-        if contiene_palabra("while"):
+        if contiene("while "):
             violaciones.append("Uso de bucles 'while' no permitido.")
 
     if restricciones.get("prohibir_for"):
-        if contiene_palabra("for"):
+        if contiene("for "):
             violaciones.append("Uso de bucles 'for' no permitido.")
 
     if restricciones.get("prohibir_eval"):
-        if contiene_palabra("eval"):
+        if contiene("eval("):
             violaciones.append("Uso de 'eval' no permitido.")
 
     if restricciones.get("prohibir_exec"):
-        if contiene_palabra("exec"):
+        if contiene("exec("):
             violaciones.append("Uso de 'exec' no permitido.")
 
-    # Más adelante puedes añadir más, p.ej. recursion, etc.
-
+    # Si no hay infracciones, no bloqueamos
     if not violaciones:
-        # No hay problemas: seguimos
         contexto["bloquear_ejecucion"] = False
         contexto["codigo_alumno"] = codigo_alumno
         return contexto
 
-    # Hay al menos una violación -> construir mensaje y bloquear
-    lista_html = "".join(f"<li>{re.escape(msg)}</li>" for msg in violaciones)
+    # Hay violaciones: construimos HTML y bloqueamos
+    lista_html = "".join(f"<li>{msg}</li>" for msg in violaciones)
     html = (
         "<b>No se ha podido ejecutar tu código porque incumple las restricciones del ejercicio:</b>"
         "<ul>"
