@@ -1,10 +1,10 @@
-def crear_ficheros1(FICHEROS):
+def crear_ficheros(FICHEROS):
     for nombre_fichero in FICHEROS.keys():
         with open(nombre_fichero,"w",encoding="utf-8") as f:
             f.write(FICHEROS[nombre_fichero])
     return
 
-def leer_ficheros1():
+def leer_ficheros():
     partes = []
     for nombre in sorted(os.listdir(".")):
         # Solo archivos .txt
