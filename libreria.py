@@ -57,7 +57,7 @@ def cargar_parametros(contexto, params_raw):
     # Nombres de funciones (para tipo "funcion")
     contexto["nombre_funcion_patron"] = datos.get("nombre_funcion_patron", "sol_patron")
     contexto["nombre_funcion_alumno"] = datos.get("nombre_funcion_alumno", "resolver")
-    # Por compatibilidad, mantenemos nombre_funcion como alias del alumno
+    # Alias histórico
     contexto["nombre_funcion"] = contexto["nombre_funcion_alumno"]
 
     # --- entrada_estandar: SIEMPRE lista de diccionarios ---
@@ -86,9 +86,7 @@ def cargar_parametros(contexto, params_raw):
     return contexto
 
 
-
-
-# ╔════════════ 2) GENERADORES DE DATOS SEGÚN SPEC ═════════════╗
+# ╔════════════ 2) GENERADORES DE DATOS SEGÚN SPEC (PROGRAMAS) ═╗
 
 def _gen_entero(spec):
     minimo = spec.get("min", 1)
@@ -97,7 +95,7 @@ def _gen_entero(spec):
 
 
 def _gen_dos_enteros(spec):
-    # Permite min/max comunes o separados para cada entero
+    # (sigue disponible por si lo quieres usar, aunque ya no es necesario)
     min_comun = spec.get("min", 1)
     max_comun = spec.get("max", 100)
 
@@ -122,17 +120,14 @@ def _gen_lista_enteros(spec):
     if separador == "linea":
         return "\n".join(numeros) + "\n"
     else:
-        # Por defecto: todos en una línea separados por espacio
         return " ".join(numeros) + "\n"
 
 
 def _generar_desde_spec(spec):
     """
-    Dada una spec (dict) con al menos la clave 'generador',
-    devuelve una cadena de texto (para stdin o contenido de fichero).
+    Para entrada estándar y ficheros: devuelve una CADENA.
     """
     if not isinstance(spec, dict):
-        # Fallback: comportamiento antiguo
         return f"{r.randint(1, 100)}\n"
 
     gen = spec.get("generador")
@@ -146,20 +141,18 @@ def _generar_desde_spec(spec):
     if gen == "lista_enteros":
         return _gen_lista_enteros(spec)
 
-    # Aquí más adelante añadiremos otros generadores:
-    # 'texto_ciudades', 'matriz_enteros', etc.
-
-    # Fallback si el generador no se reconoce:
+    # Fallback
     return f"{r.randint(1, 100)}\n"
+
+
+# ╔════════════ 2b) GENERADOR DE VALORES (ARGUMENTOS FUNCIONES) ═╗
 
 def _generar_valor_desde_spec(spec):
     """
-    Versión para ARGUMENTOS de funciones.
-    Devuelve un valor Python (int, etc.), no una cadena.
+    Para argumentos de funciones: devuelve un VALOR Python (int, etc.).
     De momento solo soporta 'entero'.
     """
     if not isinstance(spec, dict):
-        # Fallback: entero aleatorio
         return r.randint(1, 100)
 
     gen = spec.get("generador")
@@ -169,20 +162,16 @@ def _generar_valor_desde_spec(spec):
         maximo = spec.get("max", 100)
         return r.randint(minimo, maximo)
 
-    # Más adelante: otros tipos (float, lista, etc.)
-
     # Fallback
     return r.randint(1, 100)
 
+
 def preparar_contexto(contexto):
     """
-    Genera los datos concretos de entrada_estandar, ficheros_entrada y argumentos
-    a partir de las 'spec' y del estado de random (ya sembrado en la plantilla).
-
-    entrada_estandar:
-      - siempre lista de specs (0, 1 o varias)
-    argumentos:
-      - siempre lista de valores (para funciones)
+    Genera:
+      - entrada_estandar: siempre lista de specs -> cadena
+      - ficheros_entrada: dict nombre -> contenido
+      - argumentos: lista de valores (para funciones)
     """
     contexto = dict(contexto)
 
@@ -218,24 +207,21 @@ def preparar_contexto(contexto):
     return contexto
 
 
-
-# ╔════════════ 3) ENTORNO PATRÓN ══════════════════════════════╗
+# ╔════════════ 3) ENTORNO PATRÓN (PROGRAMAS) ══════════════════╗
 
 def preparar_entorno_patron(contexto):
     """
-    Redirige stdout y stdin para ejecutar el PATRÓN.
-    Crea los ficheros de entrada a partir de contexto["ficheros_entrada"].
+    Redirige stdout y stdin para ejecutar el PATRÓN (modo programa).
+    Crea los ficheros de entrada.
     """
     contexto = dict(contexto)
 
     patron_out = StringIO()
     contexto["_patron_out"] = patron_out
 
-    # Redirigir stdout y stdin
     sys.stdout = patron_out
     sys.stdin = StringIO(contexto.get("entrada_estandar", ""))
 
-    # Crear ficheros de entrada
     crear_ficheros(contexto.get("ficheros_entrada", {}))
 
     return contexto
@@ -243,8 +229,7 @@ def preparar_entorno_patron(contexto):
 
 def finalizar_entorno_patron(contexto):
     """
-    Lee la salida del patrón y los ficheros tras su ejecución.
-    (No restaura stdout aún, porque luego lo pisará el entorno del alumno.)
+    Lee salida y ficheros tras el patrón.
     """
     contexto = dict(contexto)
 
@@ -259,12 +244,11 @@ def finalizar_entorno_patron(contexto):
     return contexto
 
 
-# ╔════════════ 4) ENTORNO ALUMNO ══════════════════════════════╗
+# ╔════════════ 4) ENTORNO ALUMNO (PROGRAMAS) ══════════════════╗
 
 def preparar_entorno_alumno(contexto):
     """
-    Redirige stdout y stdin para ejecutar el código del alumno.
-    Vuelve a crear los ficheros de entrada.
+    Redirige stdout y stdin para ejecutar el código del alumno (modo programa).
     """
     contexto = dict(contexto)
 
@@ -281,8 +265,8 @@ def preparar_entorno_alumno(contexto):
 
 def finalizar_entorno_alumno(contexto):
     """
-    Lee la salida y los ficheros tras la ejecución del alumno.
-    Restaura sys.stdout al final.
+    Lee salida y ficheros tras el alumno (modo programa).
+    Restaura sys.stdout.
     """
     contexto = dict(contexto)
 
@@ -294,17 +278,16 @@ def finalizar_entorno_alumno(contexto):
 
     contexto["ficheros_alumno"] = leer_ficheros_txt()
 
-    # Restaurar stdout
     sys.stdout = sys.__stdout__
 
     return contexto
 
 
-# ╔════════════ 5) COMPARAR PATRÓN Y ALUMNO ════════════════════╗
+# ╔════════════ 5) EVALUAR PROGRAMAS ═══════════════════════════╗
 
 def evaluar_programas(contexto):
     """
-    Compara salida_patron / salida_alumno y ficheros.
+    Compara salida_patron / salida_alumno y ficheros (modo programa).
     """
     contexto = dict(contexto)
 
@@ -325,17 +308,16 @@ def evaluar_programas(contexto):
 
     return contexto
 
+
+# ╔════════════ 6) EVALUAR FUNCIONES ═══════════════════════════╗
+
 def evaluar_funciones(contexto, gbls):
     """
     Evalúa ejercicios de tipo 'funcion'.
 
-    - Usa contexto["nombre_funcion_patron"] y contexto["nombre_funcion_alumno"]
-    - Usa contexto["argumentos"] como lista de argumentos para un solo test.
-    - Compara el valor devuelto por ambas funciones.
-    - Rellena:
-        - salida_patron / salida_alumno (como repr del resultado)
-        - ficheros_patron / ficheros_alumno (vacíos)
-        - award, coinciden
+    Usa:
+      - nombre_funcion_patron / nombre_funcion_alumno
+      - argumentos: lista de valores
     """
     contexto = dict(contexto)
 
@@ -343,7 +325,6 @@ def evaluar_funciones(contexto, gbls):
     nom_alu = contexto.get("nombre_funcion_alumno")
     args = contexto.get("argumentos", [])
 
-    # Intentar recuperar las funciones del módulo principal
     f_pat = gbls.get(nom_pat)
     f_alu = gbls.get(nom_alu)
 
@@ -370,94 +351,4 @@ def evaluar_funciones(contexto, gbls):
     try:
         res_alu = f_alu(*args)
     except Exception as e:
-        contexto["salida_patron"] = repr(res_pat)
-        contexto["salida_alumno"] = f"[Error ejecutando función del alumno: {e}]"
-        contexto["ficheros_patron"] = ""
-        contexto["ficheros_alumno"] = ""
-        contexto["coinciden"] = False
-        contexto["award"] = 0.0
-        return contexto
-
-    # Comparación de resultados
-    coincide = (res_alu == res_pat)
-    award = 1.0 if coincide else 0.0
-
-    # Guardamos como "salida" el repr del valor
-    contexto["salida_patron"] = repr(res_pat)
-    contexto["salida_alumno"] = repr(res_alu)
-    contexto["ficheros_patron"] = ""
-    contexto["ficheros_alumno"] = ""
-    contexto["coinciden"] = coincide
-    contexto["award"] = award
-
-    return contexto
-
-
-# ╔════════════ 6) CONSTRUIR RESULTADO (HTML + JSON) ═══════════╗
-
-def construir_resultado(contexto):
-    """
-    Construye el HTML de feedback y el JSON final.
-    Guarda el JSON en CONTEXTO["resultado"].
-    """
-    contexto = dict(contexto)
-
-    salida_patron = contexto.get("salida_patron", "")
-    salida_alumno = contexto.get("salida_alumno", "")
-    ficheros_patron = contexto.get("ficheros_patron", "")
-    ficheros_alumno = contexto.get("ficheros_alumno", "")
-    award = contexto.get("award", 0.0)
-
-    if ficheros_alumno == "" and ficheros_patron == "":
-        html = (
-            "<table style='width:100%; border-collapse:collapse;'>"
-            "<tr>"
-            "  <th style='width:50%; text-align:left;'><b>RESULTADO ALUMNO</b></th>"
-            "  <th style='width:50%; text-align:left;'><b>RESULTADO CORRECTO</b></th>"
-            "</tr>"
-            "<tr>"
-            "  <td style='vertical-align:top; border-right:1px solid #ccc;'>"
-            "    <b>Pantalla</b><br>"
-            "    <pre>" + salida_alumno + "</pre>"
-            "  </td>"
-            "  <td style='vertical-align:top;'>"
-            "    <b>Pantalla</b><br>"
-            "    <pre>" + salida_patron + "</pre>"
-            "  </td>"
-            "</tr>"
-            "</table>"
-        )
-    else:
-        html = (
-            "<table style='width:100%; border-collapse:collapse;'>"
-            "<tr>"
-            "  <th style='width:50%; text-align:left;'><b>RESULTADO ALUMNO</b></th>"
-            "  <th style='width:50%; text-align:left;'><b>RESULTADO CORRECTO</b></th>"
-            "</tr>"
-            "<tr>"
-            "  <td style='vertical-align:top; border-right:1px solid #ccc;'>"
-            "    <b>Pantalla</b><br>"
-            "    <pre>" + salida_alumno + "</pre>"
-            "    <b>Ficheros</b><br>"
-            "    <pre>" + ficheros_alumno + "</pre>"
-            "  </td>"
-            "  <td style='vertical-align:top;'>"
-            "    <b>Pantalla</b><br>"
-            "    <pre>" + salida_patron + "</pre>"
-            "    <b>Ficheros</b><br>"
-            "    <pre>" + ficheros_patron + "</pre>"
-            "  </td>"
-            "</tr>"
-            "</table>"
-        )
-
-    contexto["html"] = html
-
-    resultado = {
-        "fraction": award,
-        "prologuehtml": html
-    }
-
-    contexto["resultado"] = json.dumps(resultado)
-
-    return contexto
+        contexto["sa]()
