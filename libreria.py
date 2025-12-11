@@ -1,3 +1,5 @@
+import os
+Numero = 1000
 def crear_ficheros(FICHEROS):
     for nombre_fichero in FICHEROS.keys():
         with open(nombre_fichero,"w",encoding="utf-8") as f:
