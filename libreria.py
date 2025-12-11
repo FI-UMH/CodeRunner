@@ -38,40 +38,53 @@ def leer_ficheros_txt():
 def cargar_parametros(contexto, params_raw):
     """
     Lee QUESTION.parameters (JSON) y rellena las claves básicas de CONTEXTO.
-    Se normaliza:
+    Normaliza:
       - entrada_estandar -> lista de dicts (0, 1 o varios)
+      - argumentos       -> lista de dicts (0, 1 o varios)
     """
     contexto = dict(contexto)
 
     try:
         datos = json.loads(params_raw) if params_raw and params_raw.strip() else {}
-        if datos is None:  # por si viene "null"
+        if datos is None:
             datos = {}
     except Exception:
         datos = {}
 
     contexto["ejercicio"] = datos.get("ejercicio", "ejercicio_sin_nombre")
     contexto["tipo"] = datos.get("tipo", "programa")
-    contexto["nombre_funcion"] = datos.get("nombre_funcion")
+
+    # Nombres de funciones (para tipo "funcion")
+    contexto["nombre_funcion_patron"] = datos.get("nombre_funcion_patron", "sol_patron")
+    contexto["nombre_funcion_alumno"] = datos.get("nombre_funcion_alumno", "resolver")
+    # Por compatibilidad, mantenemos nombre_funcion como alias del alumno
+    contexto["nombre_funcion"] = contexto["nombre_funcion_alumno"]
 
     # --- entrada_estandar: SIEMPRE lista de diccionarios ---
     spec_in = datos.get("entrada_estandar")
-
     if spec_in is None:
-        contexto["spec_entrada_estandar"] = []      # sin definición
+        contexto["spec_entrada_estandar"] = []
     elif isinstance(spec_in, list):
         contexto["spec_entrada_estandar"] = spec_in
     else:
-        # modo retrocompatible: si el profe puso un dict, lo envolvemos en lista
         contexto["spec_entrada_estandar"] = [spec_in]
 
-    # ficheros_entrada ya es lista de dicts en el JSON
+    # --- ficheros_entrada: lista de diccionarios ---
     contexto["spec_ficheros_entrada"] = datos.get("ficheros_entrada", [])
-    contexto["spec_argumentos"] = datos.get("argumentos")
+
+    # --- argumentos: SIEMPRE lista de diccionarios (para funciones) ---
+    spec_args = datos.get("argumentos")
+    if spec_args is None:
+        contexto["spec_argumentos"] = []
+    elif isinstance(spec_args, list):
+        contexto["spec_argumentos"] = spec_args
+    else:
+        contexto["spec_argumentos"] = [spec_args]
 
     contexto["restricciones"] = datos.get("restricciones", {})
 
     return contexto
+
 
 
 
@@ -139,6 +152,27 @@ def _generar_desde_spec(spec):
     # Fallback si el generador no se reconoce:
     return f"{r.randint(1, 100)}\n"
 
+def _generar_valor_desde_spec(spec):
+    """
+    Versión para ARGUMENTOS de funciones.
+    Devuelve un valor Python (int, etc.), no una cadena.
+    De momento solo soporta 'entero'.
+    """
+    if not isinstance(spec, dict):
+        # Fallback: entero aleatorio
+        return r.randint(1, 100)
+
+    gen = spec.get("generador")
+
+    if gen == "entero":
+        minimo = spec.get("min", 1)
+        maximo = spec.get("max", 100)
+        return r.randint(minimo, maximo)
+
+    # Más adelante: otros tipos (float, lista, etc.)
+
+    # Fallback
+    return r.randint(1, 100)
 
 def preparar_contexto(contexto):
     """
@@ -146,16 +180,16 @@ def preparar_contexto(contexto):
     a partir de las 'spec' y del estado de random (ya sembrado en la plantilla).
 
     entrada_estandar:
-      - siempre se interpreta como lista de specs (0, 1 o varias)
-      - si la lista está vacía -> comportamiento antiguo (entero aleatorio 1..100)
+      - siempre lista de specs (0, 1 o varias)
+    argumentos:
+      - siempre lista de valores (para funciones)
     """
     contexto = dict(contexto)
 
-    # ── ENTRADA ESTÁNDAR (lista de specs) ─────────────────────
+    # ── ENTRADA ESTÁNDAR ───────────────────────────────────────
     lista_specs = contexto.get("spec_entrada_estandar", [])
 
     if not lista_specs:
-        # Sin specs: fallback antiguo
         contexto["entrada_estandar"] = f"{r.randint(1, 100)}\n"
     else:
         partes = []
@@ -163,7 +197,7 @@ def preparar_contexto(contexto):
             partes.append(_generar_desde_spec(spec))
         contexto["entrada_estandar"] = "".join(partes)
 
-    # ── FICHEROS DE ENTRADA (igual que antes) ─────────────────
+    # ── FICHEROS DE ENTRADA ────────────────────────────────────
     contexto["ficheros_entrada"] = {}
     for spec_f in contexto.get("spec_ficheros_entrada", []):
         if not isinstance(spec_f, dict):
@@ -174,10 +208,15 @@ def preparar_contexto(contexto):
         contenido = _generar_desde_spec(spec_f)
         contexto["ficheros_entrada"][nombre] = contenido
 
-    # ── ARGUMENTOS PARA FUNCIONES (pendiente) ─────────────────
-    contexto["argumentos"] = None
+    # ── ARGUMENTOS PARA FUNCIONES ──────────────────────────────
+    args_specs = contexto.get("spec_argumentos", [])
+    argumentos = []
+    for spec in args_specs:
+        argumentos.append(_generar_valor_desde_spec(spec))
+    contexto["argumentos"] = argumentos
 
     return contexto
+
 
 
 # ╔════════════ 3) ENTORNO PATRÓN ══════════════════════════════╗
@@ -263,7 +302,7 @@ def finalizar_entorno_alumno(contexto):
 
 # ╔════════════ 5) COMPARAR PATRÓN Y ALUMNO ════════════════════╗
 
-def comparar(contexto):
+def evaluar_programas(contexto):
     """
     Compara salida_patron / salida_alumno y ficheros.
     """
@@ -281,6 +320,73 @@ def comparar(contexto):
 
     award = 1.0 if coincide else 0.0
 
+    contexto["coinciden"] = coincide
+    contexto["award"] = award
+
+    return contexto
+
+def evaluar_funciones(contexto, gbls):
+    """
+    Evalúa ejercicios de tipo 'funcion'.
+
+    - Usa contexto["nombre_funcion_patron"] y contexto["nombre_funcion_alumno"]
+    - Usa contexto["argumentos"] como lista de argumentos para un solo test.
+    - Compara el valor devuelto por ambas funciones.
+    - Rellena:
+        - salida_patron / salida_alumno (como repr del resultado)
+        - ficheros_patron / ficheros_alumno (vacíos)
+        - award, coinciden
+    """
+    contexto = dict(contexto)
+
+    nom_pat = contexto.get("nombre_funcion_patron")
+    nom_alu = contexto.get("nombre_funcion_alumno")
+    args = contexto.get("argumentos", [])
+
+    # Intentar recuperar las funciones del módulo principal
+    f_pat = gbls.get(nom_pat)
+    f_alu = gbls.get(nom_alu)
+
+    if f_pat is None or f_alu is None:
+        contexto["salida_patron"] = f"[No se encontró la función patrón '{nom_pat}']"
+        contexto["salida_alumno"] = f"[No se encontró la función alumna '{nom_alu}']"
+        contexto["ficheros_patron"] = ""
+        contexto["ficheros_alumno"] = ""
+        contexto["coinciden"] = False
+        contexto["award"] = 0.0
+        return contexto
+
+    try:
+        res_pat = f_pat(*args)
+    except Exception as e:
+        contexto["salida_patron"] = f"[Error ejecutando patrón: {e}]"
+        contexto["salida_alumno"] = ""
+        contexto["ficheros_patron"] = ""
+        contexto["ficheros_alumno"] = ""
+        contexto["coinciden"] = False
+        contexto["award"] = 0.0
+        return contexto
+
+    try:
+        res_alu = f_alu(*args)
+    except Exception as e:
+        contexto["salida_patron"] = repr(res_pat)
+        contexto["salida_alumno"] = f"[Error ejecutando función del alumno: {e}]"
+        contexto["ficheros_patron"] = ""
+        contexto["ficheros_alumno"] = ""
+        contexto["coinciden"] = False
+        contexto["award"] = 0.0
+        return contexto
+
+    # Comparación de resultados
+    coincide = (res_alu == res_pat)
+    award = 1.0 if coincide else 0.0
+
+    # Guardamos como "salida" el repr del valor
+    contexto["salida_patron"] = repr(res_pat)
+    contexto["salida_alumno"] = repr(res_alu)
+    contexto["ficheros_patron"] = ""
+    contexto["ficheros_alumno"] = ""
     contexto["coinciden"] = coincide
     contexto["award"] = award
 
