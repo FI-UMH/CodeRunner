@@ -40,10 +40,12 @@ def cargar_parametros(contexto, params_raw):
     Lee QUESTION.parameters (JSON) y rellena las claves básicas de CONTEXTO.
     Si hay error en el JSON, aplica valores por defecto.
     """
-    contexto = dict(contexto)  # copiar por seguridad
+    contexto = dict(contexto)
 
     try:
-        datos = json.loads(params_raw) if params_raw.strip() else {}
+        datos = json.loads(params_raw) if params_raw and params_raw.strip() else {}
+        if datos is None:  # por si viene "null"
+            datos = {}
     except Exception:
         datos = {}
 
@@ -51,7 +53,7 @@ def cargar_parametros(contexto, params_raw):
     contexto["tipo"] = datos.get("tipo", "programa")
     contexto["nombre_funcion"] = datos.get("nombre_funcion")
 
-    # "spec" de generación de datos (por ahora solo las guardamos)
+    # "spec" de generación de datos
     contexto["spec_entrada_estandar"] = datos.get("entrada_estandar")
     contexto["spec_ficheros_entrada"] = datos.get("ficheros_entrada", [])
     contexto["spec_argumentos"] = datos.get("argumentos")
@@ -61,28 +63,61 @@ def cargar_parametros(contexto, params_raw):
     return contexto
 
 
-# ╔════════════ 2) PREPARAR CONTEXTO (DATOS ALEATORIOS) ════════╗
+# ╔════════════ 2) GENERADORES DE DATOS SEGÚN SPEC ═════════════╗
+
+def _generar_desde_spec(spec):
+    """
+    Dada una spec (dict) con al menos la clave 'generador',
+    devuelve una cadena de texto (para stdin o contenido de fichero).
+    Versión inicial con un solo generador real ('entero') y un fallback.
+    """
+    if not isinstance(spec, dict):
+        # Fallback: comportamiento antiguo
+        return f"{r.randint(1, 100)}\n"
+
+    gen = spec.get("generador")
+
+    # ── Generador 'entero': un entero en [min, max] + salto de línea
+    if gen == "entero":
+        minimo = spec.get("min", 1)
+        maximo = spec.get("max", 100)
+        return f"{r.randint(minimo, maximo)}\n"
+
+    # Aquí más adelante añadiremos otros generadores:
+    # 'dos_enteros', 'lista_enteros', 'ciudades', etc.
+
+    # Fallback si el generador no se reconoce:
+    return f"{r.randint(1, 100)}\n"
+
 
 def preparar_contexto(contexto):
     """
     Genera los datos concretos de entrada_estandar, ficheros_entrada y argumentos
     a partir de las 'spec' y del estado de random (ya sembrado en la plantilla).
-    De momento: versión mínima equivalente a la plantilla actual.
     """
     contexto = dict(contexto)
 
-    # Por ahora: si no hay spec, usamos el comportamiento antiguo:
-    # entrada_estandar = entero aleatorio 1..100 + salto de línea.
-    if contexto.get("spec_entrada_estandar") is None:
+    # ── ENTRADA ESTÁNDAR ───────────────────────────────────────
+    spec_in = contexto.get("spec_entrada_estandar")
+    if spec_in is None:
+        # Sin spec: comportamiento antiguo
         contexto["entrada_estandar"] = f"{r.randint(1, 100)}\n"
     else:
-        # Más adelante implementaremos generadores según spec_entrada_estandar
-        contexto["entrada_estandar"] = f"{r.randint(1, 100)}\n"
+        contexto["entrada_estandar"] = _generar_desde_spec(spec_in)
 
-    # Ficheros de entrada: por ahora ninguno (equivalente a FICHEROS = {})
+    # ── FICHEROS DE ENTRADA ────────────────────────────────────
     contexto["ficheros_entrada"] = {}
+    for spec_f in contexto.get("spec_ficheros_entrada", []):
+        if not isinstance(spec_f, dict):
+            continue
+        nombre = spec_f.get("nombre")
+        if not nombre:
+            continue
+        contenido = _generar_desde_spec(spec_f)
+        contexto["ficheros_entrada"][nombre] = contenido
 
-    # Argumentos para funciones: más adelante
+    # ── ARGUMENTOS PARA FUNCIONES (por ahora sin usar) ─────────
+    # Más adelante: generar estructura (lista/tupla) en función de la spec.
     contexto["argumentos"] = None
 
     return contexto
@@ -174,7 +209,6 @@ def finalizar_entorno_alumno(contexto):
 def comparar(contexto):
     """
     Compara salida_patron / salida_alumno y ficheros.
-    De momento: comportamiento equivalente a plantilla3.
     """
     contexto = dict(contexto)
 
@@ -183,7 +217,6 @@ def comparar(contexto):
     ficheros_patron = contexto.get("ficheros_patron", "")
     ficheros_alumno = contexto.get("ficheros_alumno", "")
 
-    # Igual que plantilla3: si no hay ficheros, comparamos solo pantalla
     if ficheros_alumno == "" and ficheros_patron == "":
         coincide = (salida_alumno == salida_patron)
     else:
