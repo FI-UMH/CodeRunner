@@ -5,7 +5,6 @@ def crear_ficheros1(FICHEROS):
     return
 
 def leer_ficheros1():
-    import os
     partes = []
     for nombre in sorted(os.listdir(".")):
         # Solo archivos .txt
@@ -17,3 +16,6 @@ def leer_ficheros1():
                 contenido = "[NO SE PUEDE LEER]"
             partes.append(f"<u>{nombre}</u>:\n{contenido.strip()}")
     return "\n".join(partes)
+
+def sumar(x,y):
+    return x+y
