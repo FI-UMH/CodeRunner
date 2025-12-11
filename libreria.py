@@ -5,6 +5,7 @@ def crear_ficheros1(FICHEROS):
     return
 
 def leer_ficheros1():
+    import os
     partes = []
     for nombre in sorted(os.listdir(".")):
         # Solo archivos .txt
