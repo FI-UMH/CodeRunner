@@ -17,5 +17,5 @@ def leer_ficheros1():
             partes.append(f"<u>{nombre}</u>:\n{contenido.strip()}")
     return "\n".join(partes)
 
-def sumar(x,y):
-    return x+y
+def cuadrado(x):
+    return x*x
