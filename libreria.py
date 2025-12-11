@@ -17,5 +17,5 @@ def leer_ficheros():
             partes.append(f"<u>{nombre}</u>:\n{contenido.strip()}")
     return "\n".join(partes)
 
-def cuadrado(x):
+def cuadrado1(x):
     return x*x
