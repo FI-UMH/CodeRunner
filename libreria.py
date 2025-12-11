@@ -351,4 +351,120 @@ def evaluar_funciones(contexto, gbls):
     try:
         res_alu = f_alu(*args)
     except Exception as e:
-        contexto["sa]()
+        contexto["salida_patron"] = repr(res_pat)
+        contexto["salida_alumno"] = f"[Error ejecutando función del alumno: {e}]"
+        contexto["ficheros_patron"] = ""
+        contexto["ficheros_alumno"] = ""
+        contexto["coinciden"] = False
+        contexto["award"] = 0.0
+        return contexto
+
+    coincide = (res_alu == res_pat)
+    award = 1.0 if coincide else 0.0
+
+    contexto["salida_patron"] = repr(res_pat)
+    contexto["salida_alumno"] = repr(res_alu)
+    contexto["ficheros_patron"] = ""
+    contexto["ficheros_alumno"] = ""
+    contexto["coinciden"] = coincide
+    contexto["award"] = award
+
+    return contexto
+
+
+# ╔════════════ 7) CONSTRUIR RESULTADO (HTML + JSON) ═══════════╗
+
+def construir_resultado(contexto):
+    """
+    Construye el HTML de feedback y el JSON final.
+    Guarda el JSON en CONTEXTO["resultado"].
+    """
+    contexto = dict(contexto)
+
+    tipo = contexto.get("tipo", "programa")
+
+    salida_patron = contexto.get("salida_patron", "")
+    salida_alumno = contexto.get("salida_alumno", "")
+    ficheros_patron = contexto.get("ficheros_patron", "")
+    ficheros_alumno = contexto.get("ficheros_alumno", "")
+    award = contexto.get("award", 0.0)
+
+    if tipo == "funcion":
+        # Mostrar también argumentos
+        argumentos = contexto.get("argumentos", [])
+        args_str = ", ".join(repr(a) for a in argumentos)
+
+        html = (
+            "<b>Evaluación de función</b><br>"
+            f"<b>Argumentos usados:</b> <pre>{args_str}</pre>"
+            "<table style='width:100%; border-collapse:collapse; margin-top:0.5em;'>"
+            "<tr>"
+            "  <th style='width:50%; text-align:left;'><b>FUNCIÓN ALUMNO</b></th>"
+            "  <th style='width:50%; text-align:left;'><b>FUNCIÓN CORRECTA</b></th>"
+            "</tr>"
+            "<tr>"
+            "  <td style='vertical-align:top; border-right:1px solid #ccc;'>"
+            "    <b>Valor devuelto</b><br>"
+            "    <pre>" + salida_alumno + "</pre>"
+            "  </td>"
+            "  <td style='vertical-align:top;'>"
+            "    <b>Valor devuelto</b><br>"
+            "    <pre>" + salida_patron + "</pre>"
+            "  </td>"
+            "</tr>"
+            "</table>"
+        )
+
+    elif ficheros_alumno == "" and ficheros_patron == "":
+        html = (
+            "<table style='width:100%; border-collapse:collapse;'>"
+            "<tr>"
+            "  <th style='width:50%; text-align:left;'><b>RESULTADO ALUMNO</b></th>"
+            "  <th style='width:50%; text-align:left;'><b>RESULTADO CORRECTO</b></th>"
+            "</tr>"
+            "<tr>"
+            "  <td style='vertical-align:top; border-right:1px solid #ccc;'>"
+            "    <b>Pantalla</b><br>"
+            "    <pre>" + salida_alumno + "</pre>"
+            "  </td>"
+            "  <td style='vertical-align:top;'>"
+            "    <b>Pantalla</b><br>"
+            "    <pre>" + salida_patron + "</pre>"
+            "  </td>"
+            "</tr>"
+            "</table>"
+        )
+    else:
+        html = (
+            "<table style='width:100%; border-collapse:collapse;'>"
+            "<tr>"
+            "  <th style='width:50%; text-align:left;'><b>RESULTADO ALUMNO</b></th>"
+            "  <th style='width:50%; text-align:left;'><b>RESULTADO CORRECTO</b></th>"
+            "</tr>"
+            "<tr>"
+            "  <td style='vertical-align:top; border-right:1px solid #ccc;'>"
+            "    <b>Pantalla</b><br>"
+            "    <pre>" + salida_alumno + "</pre>"
+            "    <b>Ficheros</b><br>"
+            "    <pre>" + ficheros_alumno + "</pre>"
+            "  </td>"
+            "  <td style='vertical-align:top;'>"
+            "    <b>Pantalla</b><br>"
+            "    <pre>" + salida_patron + "</pre>"
+            "    <b>Ficheros</b><br>"
+            "    <pre>" + ficheros_patron + "</pre>"
+            "  </td>"
+            "</tr>"
+            "</table>"
+        )
+
+    contexto["html"] = html
+
+    resultado = {
+        "fraction": award,
+        "prologuehtml": html
+    }
+
+    contexto["resultado"] = json.dumps(resultado)
+
+    return contexto
