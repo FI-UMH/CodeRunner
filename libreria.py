@@ -3,7 +3,6 @@ from io import StringIO
 import random as r
 
 
-
 # ╔════════════ UTILIDADES DE FICHEROS ═════════════════════════╗
 
 def crear_ficheros(dic_ficheros):
@@ -17,12 +16,11 @@ def crear_ficheros(dic_ficheros):
             f.write(contenido)
 
 
-def leer_ficheros_txt():
+def leer_ficheros_txt_dict():
     """
-    Devuelve un solo string con el contenido de todos los .txt
-    del directorio actual, ordenados por nombre.
+    Devuelve un dict {nombre: contenido} con TODOS los .txt del directorio actual.
     """
-    partes = []
+    ficheros = {}
     for nombre in sorted(os.listdir(".")):
         if os.path.isfile(nombre) and nombre.lower().endswith(".txt"):
             try:
@@ -30,7 +28,26 @@ def leer_ficheros_txt():
                     contenido = f.read()
             except Exception:
                 contenido = "[NO SE PUEDE LEER]"
-            partes.append(f"<u>{nombre}</u>:\n{contenido.strip()}")
+            ficheros[nombre] = contenido
+    return ficheros
+
+
+def dict_ficheros_a_html(dic_ficheros):
+    """
+    Convierte un dict {nombre: contenido} en un texto HTML tipo:
+
+    <u>fichero1.txt</u>:
+    ...
+    <u>fichero2.txt</u>:
+    ...
+    """
+    if not dic_ficheros:
+        return ""
+
+    partes = []
+    for nombre in sorted(dic_ficheros.keys()):
+        contenido = dic_ficheros[nombre].strip()
+        partes.append(f"<u>{nombre}</u>:\n{contenido}")
     return "\n".join(partes)
 
 
@@ -58,7 +75,6 @@ def cargar_parametros(contexto, params_raw):
     # Nombres de funciones (para tipo "funcion")
     contexto["nombre_funcion_patron"] = datos.get("nombre_funcion_patron", "sol_patron")
     contexto["nombre_funcion_alumno"] = datos.get("nombre_funcion_alumno", "resolver")
-    # Alias histórico
     contexto["nombre_funcion"] = contexto["nombre_funcion_alumno"]
 
     # --- entrada_estandar: SIEMPRE lista de diccionarios ---
@@ -82,46 +98,39 @@ def cargar_parametros(contexto, params_raw):
     else:
         contexto["spec_argumentos"] = [spec_args]
 
+    # --- ficheros_salida: qué ficheros se deben comparar (opcional) ---
+    contexto["ficheros_salida"] = datos.get("ficheros_salida", None)
+
     contexto["restricciones"] = datos.get("restricciones", {})
 
     return contexto
+
+
+# ╔════════════ 1b) RESTRICCIONES CÓDIGO ALUMNO ════════════════╗
 
 def comprobar_restricciones(contexto, codigo_alumno):
     """
     Comprueba las restricciones definidas en contexto["restricciones"]
     sobre el código fuente del alumno (cadena completa).
-
-    Si hay infracciones:
-      - contexto["bloquear_ejecucion"] = True
-      - contexto["award"] = 0.0
-      - contexto["html"] = mensaje explicativo
-      - contexto["resultado"] = JSON con fraction=0 y ese html
-
-    Si no hay infracciones:
-      - contexto["bloquear_ejecucion"] = False
-      - guarda el código en contexto["codigo_alumno"]
     """
     contexto = dict(contexto)
 
     restricciones = contexto.get("restricciones", {}) or {}
     violaciones = []
 
-    # Opcional: eliminar comentarios de una línea para no bloquear por cosas en comentarios
+    # quitar comentarios simples para evitar falsos positivos
     lineas_sin_coment = []
     for line in codigo_alumno.splitlines():
-        # Quita lo que haya tras '#'
         if "#" in line:
             line = line.split("#", 1)[0]
         lineas_sin_coment.append(line)
     codigo_limpio = "\n".join(lineas_sin_coment)
 
-    # Función helper: búsqueda directa de la palabra
     def contiene(palabra: str) -> bool:
         return palabra in codigo_limpio
 
-    # --- restricciones básicas ---
     if restricciones.get("prohibir_import"):
-        if contiene("import "):  # import con espacio
+        if contiene("import "):
             violaciones.append("Uso de 'import' no permitido.")
 
     if restricciones.get("prohibir_while"):
@@ -140,13 +149,11 @@ def comprobar_restricciones(contexto, codigo_alumno):
         if contiene("exec("):
             violaciones.append("Uso de 'exec' no permitido.")
 
-    # Si no hay infracciones, no bloqueamos
     if not violaciones:
         contexto["bloquear_ejecucion"] = False
         contexto["codigo_alumno"] = codigo_alumno
         return contexto
 
-    # Hay violaciones: construimos HTML y bloqueamos
     lista_html = "".join(f"<li>{msg}</li>" for msg in violaciones)
     html = (
         "<b>No se ha podido ejecutar tu código porque incumple las restricciones del ejercicio:</b>"
@@ -168,7 +175,7 @@ def comprobar_restricciones(contexto, codigo_alumno):
     return contexto
 
 
-# ╔════════════ 2) GENERADORES DE DATOS SEGÚN SPEC (PROGRAMAS) ═╗
+# ╔════════════ 2) GENERADORES DE DATOS (PROGRAMAS/FUNCIONES) ══╗
 
 def _gen_entero(spec):
     minimo = spec.get("min", 1)
@@ -177,7 +184,6 @@ def _gen_entero(spec):
 
 
 def _gen_dos_enteros(spec):
-    # (sigue disponible por si lo quieres usar, aunque ya no es necesario)
     min_comun = spec.get("min", 1)
     max_comun = spec.get("max", 100)
 
@@ -195,7 +201,7 @@ def _gen_lista_enteros(spec):
     cantidad = spec.get("cantidad", 5)
     minimo = spec.get("min", 0)
     maximo = spec.get("max", 9)
-    separador = spec.get("separador", "espacio")  # "espacio" o "linea"
+    separador = spec.get("separador", "espacio")
 
     numeros = [str(r.randint(minimo, maximo)) for _ in range(cantidad)]
 
@@ -223,16 +229,12 @@ def _generar_desde_spec(spec):
     if gen == "lista_enteros":
         return _gen_lista_enteros(spec)
 
-    # Fallback
     return f"{r.randint(1, 100)}\n"
 
-
-# ╔════════════ 2b) GENERADOR DE VALORES (ARGUMENTOS FUNCIONES) ═╗
 
 def _generar_valor_desde_spec(spec):
     """
     Para argumentos de funciones: devuelve un VALOR Python (int, etc.).
-    De momento solo soporta 'entero'.
     """
     if not isinstance(spec, dict):
         return r.randint(1, 100)
@@ -244,22 +246,20 @@ def _generar_valor_desde_spec(spec):
         maximo = spec.get("max", 100)
         return r.randint(minimo, maximo)
 
-    # Fallback
     return r.randint(1, 100)
 
 
 def preparar_contexto(contexto):
     """
     Genera:
-      - entrada_estandar: siempre lista de specs -> cadena
-      - ficheros_entrada: dict nombre -> contenido
-      - argumentos: lista de valores (para funciones)
+      - entrada_estandar (cadena)
+      - ficheros_entrada (dict nombre -> contenido)
+      - argumentos (lista de valores, para funciones)
     """
     contexto = dict(contexto)
 
-    # ── ENTRADA ESTÁNDAR ───────────────────────────────────────
+    # entrada estándar
     lista_specs = contexto.get("spec_entrada_estandar", [])
-
     if not lista_specs:
         contexto["entrada_estandar"] = f"{r.randint(1, 100)}\n"
     else:
@@ -268,7 +268,7 @@ def preparar_contexto(contexto):
             partes.append(_generar_desde_spec(spec))
         contexto["entrada_estandar"] = "".join(partes)
 
-    # ── FICHEROS DE ENTRADA ────────────────────────────────────
+    # ficheros de entrada
     contexto["ficheros_entrada"] = {}
     for spec_f in contexto.get("spec_ficheros_entrada", []):
         if not isinstance(spec_f, dict):
@@ -279,7 +279,7 @@ def preparar_contexto(contexto):
         contenido = _generar_desde_spec(spec_f)
         contexto["ficheros_entrada"][nombre] = contenido
 
-    # ── ARGUMENTOS PARA FUNCIONES ──────────────────────────────
+    # argumentos para funciones
     args_specs = contexto.get("spec_argumentos", [])
     argumentos = []
     for spec in args_specs:
@@ -292,10 +292,6 @@ def preparar_contexto(contexto):
 # ╔════════════ 3) ENTORNO PATRÓN (PROGRAMAS) ══════════════════╗
 
 def preparar_entorno_patron(contexto):
-    """
-    Redirige stdout y stdin para ejecutar el PATRÓN (modo programa).
-    Crea los ficheros de entrada.
-    """
     contexto = dict(contexto)
 
     patron_out = StringIO()
@@ -310,9 +306,6 @@ def preparar_entorno_patron(contexto):
 
 
 def finalizar_entorno_patron(contexto):
-    """
-    Lee salida y ficheros tras el patrón.
-    """
     contexto = dict(contexto)
 
     patron_out = contexto.get("_patron_out")
@@ -321,7 +314,9 @@ def finalizar_entorno_patron(contexto):
     else:
         contexto["salida_patron"] = ""
 
-    contexto["ficheros_patron"] = leer_ficheros_txt()
+    dic = leer_ficheros_txt_dict()
+    contexto["ficheros_patron_dict"] = dic
+    contexto["ficheros_patron_html"] = dict_ficheros_a_html(dic)
 
     return contexto
 
@@ -329,9 +324,6 @@ def finalizar_entorno_patron(contexto):
 # ╔════════════ 4) ENTORNO ALUMNO (PROGRAMAS) ══════════════════╗
 
 def preparar_entorno_alumno(contexto):
-    """
-    Redirige stdout y stdin para ejecutar el código del alumno (modo programa).
-    """
     contexto = dict(contexto)
 
     alumno_out = StringIO()
@@ -346,10 +338,6 @@ def preparar_entorno_alumno(contexto):
 
 
 def finalizar_entorno_alumno(contexto):
-    """
-    Lee salida y ficheros tras el alumno (modo programa).
-    Restaura sys.stdout.
-    """
     contexto = dict(contexto)
 
     alumno_out = contexto.get("_alumno_out")
@@ -358,7 +346,9 @@ def finalizar_entorno_alumno(contexto):
     else:
         contexto["salida_alumno"] = ""
 
-    contexto["ficheros_alumno"] = leer_ficheros_txt()
+    dic = leer_ficheros_txt_dict()
+    contexto["ficheros_alumno_dict"] = dic
+    contexto["ficheros_alumno_html"] = dict_ficheros_a_html(dic)
 
     sys.stdout = sys.__stdout__
 
@@ -370,23 +360,40 @@ def finalizar_entorno_alumno(contexto):
 def evaluar_programas(contexto):
     """
     Compara salida_patron / salida_alumno y ficheros (modo programa).
+    Usa dicts de ficheros si están presentes.
     """
     contexto = dict(contexto)
 
     salida_patron = contexto.get("salida_patron", "").strip()
     salida_alumno = contexto.get("salida_alumno", "").strip()
-    ficheros_patron = contexto.get("ficheros_patron", "")
-    ficheros_alumno = contexto.get("ficheros_alumno", "")
 
-    if ficheros_alumno == "" and ficheros_patron == "":
+    dic_pat = contexto.get("ficheros_patron_dict", {})
+    dic_alu = contexto.get("ficheros_alumno_dict", {})
+
+    specs_salida = contexto.get("ficheros_salida", None)
+
+    if specs_salida:
+        nombres = [spec.get("nombre") for spec in specs_salida if isinstance(spec, dict)]
+        dic_pat_cmp = {n: dic_pat.get(n, "") for n in nombres}
+        dic_alu_cmp = {n: dic_alu.get(n, "") for n in nombres}
+    else:
+        nombres = sorted(dic_pat.keys())
+        dic_pat_cmp = {n: dic_pat.get(n, "") for n in nombres}
+        dic_alu_cmp = {n: dic_alu.get(n, "") for n in nombres}
+
+    hay_ficheros = bool(dic_pat_cmp or dic_alu_cmp)
+    ficheros_iguales = (dic_pat_cmp == dic_alu_cmp)
+
+    if not hay_ficheros:
         coincide = (salida_alumno == salida_patron)
     else:
-        coincide = (salida_alumno == salida_patron) and (ficheros_alumno == ficheros_patron)
+        coincide = (salida_alumno == salida_patron) and ficheros_iguales
 
     award = 1.0 if coincide else 0.0
 
     contexto["coinciden"] = coincide
     contexto["award"] = award
+    contexto["ficheros_comparados"] = nombres
 
     return contexto
 
@@ -394,13 +401,6 @@ def evaluar_programas(contexto):
 # ╔════════════ 6) EVALUAR FUNCIONES ═══════════════════════════╗
 
 def evaluar_funciones(contexto, gbls):
-    """
-    Evalúa ejercicios de tipo 'funcion'.
-
-    Usa:
-      - nombre_funcion_patron / nombre_funcion_alumno
-      - argumentos: lista de valores
-    """
     contexto = dict(contexto)
 
     nom_pat = contexto.get("nombre_funcion_patron")
@@ -413,8 +413,10 @@ def evaluar_funciones(contexto, gbls):
     if f_pat is None or f_alu is None:
         contexto["salida_patron"] = f"[No se encontró la función patrón '{nom_pat}']"
         contexto["salida_alumno"] = f"[No se encontró la función alumna '{nom_alu}']"
-        contexto["ficheros_patron"] = ""
-        contexto["ficheros_alumno"] = ""
+        contexto["ficheros_patron_dict"] = {}
+        contexto["ficheros_alumno_dict"] = {}
+        contexto["ficheros_patron_html"] = ""
+        contexto["ficheros_alumno_html"] = ""
         contexto["coinciden"] = False
         contexto["award"] = 0.0
         return contexto
@@ -424,8 +426,10 @@ def evaluar_funciones(contexto, gbls):
     except Exception as e:
         contexto["salida_patron"] = f"[Error ejecutando patrón: {e}]"
         contexto["salida_alumno"] = ""
-        contexto["ficheros_patron"] = ""
-        contexto["ficheros_alumno"] = ""
+        contexto["ficheros_patron_dict"] = {}
+        contexto["ficheros_alumno_dict"] = {}
+        contexto["ficheros_patron_html"] = ""
+        contexto["ficheros_alumno_html"] = ""
         contexto["coinciden"] = False
         contexto["award"] = 0.0
         return contexto
@@ -435,8 +439,10 @@ def evaluar_funciones(contexto, gbls):
     except Exception as e:
         contexto["salida_patron"] = repr(res_pat)
         contexto["salida_alumno"] = f"[Error ejecutando función del alumno: {e}]"
-        contexto["ficheros_patron"] = ""
-        contexto["ficheros_alumno"] = ""
+        contexto["ficheros_patron_dict"] = {}
+        contexto["ficheros_alumno_dict"] = {}
+        contexto["ficheros_patron_html"] = ""
+        contexto["ficheros_alumno_html"] = ""
         contexto["coinciden"] = False
         contexto["award"] = 0.0
         return contexto
@@ -446,8 +452,10 @@ def evaluar_funciones(contexto, gbls):
 
     contexto["salida_patron"] = repr(res_pat)
     contexto["salida_alumno"] = repr(res_alu)
-    contexto["ficheros_patron"] = ""
-    contexto["ficheros_alumno"] = ""
+    contexto["ficheros_patron_dict"] = {}
+    contexto["ficheros_alumno_dict"] = {}
+    contexto["ficheros_patron_html"] = ""
+    contexto["ficheros_alumno_html"] = ""
     contexto["coinciden"] = coincide
     contexto["award"] = award
 
@@ -457,27 +465,22 @@ def evaluar_funciones(contexto, gbls):
 # ╔════════════ 7) CONSTRUIR RESULTADO (HTML + JSON) ═══════════╗
 
 def construir_resultado(contexto):
-    """
-    Construye el HTML de feedback y el JSON final.
-    Guarda el JSON en CONTEXTO["resultado"].
-    """
     contexto = dict(contexto)
 
     tipo = contexto.get("tipo", "programa")
 
     salida_patron = contexto.get("salida_patron", "")
     salida_alumno = contexto.get("salida_alumno", "")
-    ficheros_patron = contexto.get("ficheros_patron", "")
-    ficheros_alumno = contexto.get("ficheros_alumno", "")
+    ficheros_patron_html = contexto.get("ficheros_patron_html", "")
+    ficheros_alumno_html = contexto.get("ficheros_alumno_html", "")
     award = contexto.get("award", 0.0)
 
     if tipo == "funcion":
-        # Mostrar también argumentos
         argumentos = contexto.get("argumentos", [])
         args_str = ", ".join(repr(a) for a in argumentos)
 
         html = (
-            "<b>EVALUACION DE LA FUNCIÓN</b><br>"
+            "<b>Evaluación de función</b><br>"
             f"<b>Argumentos usados:</b> <pre>{args_str}</pre>"
             "<table style='width:100%; border-collapse:collapse; margin-top:0.5em;'>"
             "<tr>"
@@ -497,12 +500,12 @@ def construir_resultado(contexto):
             "</table>"
         )
 
-    elif ficheros_alumno == "" and ficheros_patron == "":
+    elif ficheros_alumno_html == "" and ficheros_patron_html == "":
         html = (
             "<table style='width:100%; border-collapse:collapse;'>"
             "<tr>"
-            "  <th style='width:50%; text-align:left;'><b>PROGRAMA ALUMNO</b></th>"
-            "  <th style='width:50%; text-align:left;'><b>PROGRAMA CORRECTO</b></th>"
+            "  <th style='width:50%; text-align:left;'><b>RESULTADO ALUMNO</b></th>"
+            "  <th style='width:50%; text-align:left;'><b>RESULTADO CORRECTO</b></th>"
             "</tr>"
             "<tr>"
             "  <td style='vertical-align:top; border-right:1px solid #ccc;'>"
@@ -528,13 +531,13 @@ def construir_resultado(contexto):
             "    <b>Pantalla</b><br>"
             "    <pre>" + salida_alumno + "</pre>"
             "    <b>Ficheros</b><br>"
-            "    <pre>" + ficheros_alumno + "</pre>"
+            "    <pre>" + ficheros_alumno_html + "</pre>"
             "  </td>"
             "  <td style='vertical-align:top;'>"
             "    <b>Pantalla</b><br>"
             "    <pre>" + salida_patron + "</pre>"
             "    <b>Ficheros</b><br>"
-            "    <pre>" + ficheros_patron + "</pre>"
+            "    <pre>" + ficheros_patron_html + "</pre>"
             "  </td>"
             "</tr>"
             "</table>"
