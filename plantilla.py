@@ -282,5 +282,3 @@ def do_testing():
         "got": got_html,
         "fraction": fraction
     }))
-
-do_testing()
